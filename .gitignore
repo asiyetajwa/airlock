@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+.airlock-ledger.jsonl
+.relay-key.json
+models/
+film/node_modules
+film/out/
+film/public/music/
+film/public/sfx/

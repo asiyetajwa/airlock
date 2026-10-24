@@ -1,0 +1,34 @@
+{
+  "name": "airlock",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Airlock: a personal assistant that seals your secrets on your own device before anything reaches the cloud, and proves it.",
+  "workspaces": [
+    "packages/nebius-core"
+  ],
+  "scripts": {
+    "build": "node scripts/build-web.mjs",
+    "start": "npm run build && tsx --env-file-if-exists=.env src/server/index.ts",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc -p . --noEmit",
+    "model": "node scripts/fetch-model.mjs",
+    "leak-test": "tsx --env-file-if-exists=.env scripts/leak-test.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "4.2.0",
+    "@noble/curves": "2.0.1",
+    "@noble/hashes": "2.0.1",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "5.9"
+  }
+}
