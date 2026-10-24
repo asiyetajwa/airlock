@@ -56,3 +56,14 @@ test('egress check blocks a held value, exact or reformatted', () => {
   assert.equal(egressCheck('ssn 123 45 6789', values)[0]?.how, 'normalised');
   assert.equal(egressCheck('dear megan carter', values)[0]?.how, 'exact');
 });
+
+test('settings, URLs, spaced runs and sign-offs', () => {
+  const seal = (t: string) => sealAll([t]).sealed[0]?.sealed ?? '';
+  assert.equal(seal('DB_PASS=F a l c o n - H a r b o r - 2 1 0 0'), 'DB_PASS=KEY_1');
+  assert.equal(seal('REDIS_URL=redis://:Maple-Meadow-4766@cache.internal:6379'), 'REDIS_URL=redis://:PASSWORD_1@cache.internal:6379');
+  assert.equal(seal('variable "db_password" {\n  default = "Maple-Mea\ndow-4766"\n}'), 'variable "db_password" {\n  default = "KEY_1"\n}');
+  assert.equal(seal('hey brianna,\nsee you at 6\n- tyler'), 'hey PERSON_1,\nsee you at 6\n- PERSON_2');
+  assert.equal(seal('brianna: rent due\ntyler: got it, paying brianna now'), 'PERSON_1: rent due\nPERSON_2: got it, paying PERSON_1 now');
+  assert.equal(seal('Wells Fargo 029.695.920, account 896297\n090548'), 'Wells Fargo ROUTING_1, account ACCOUNT_1');
+  assert.equal(seal('Contact:\nEmail: a.b@example.com'), 'Contact:\nEmail: EMAIL_1');
+});

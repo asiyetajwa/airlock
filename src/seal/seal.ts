@@ -159,7 +159,8 @@ export function sealAll(texts: string[], opts: SealOptions = {}, map = new Token
       for (const [s, e] of occurrences(text, k.value)) spans.push({ start: s, end: e, kind: k.kind, why: 'held elsewhere in your vault', source: 'list' });
     }
     for (const p of parts) {
-      const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(p.part)}(?![\\p{L}\\p{N}])`, 'gu');
+      // Longer name parts are matched in any case ("megan"); short ones only as written, to spare ordinary words.
+      const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(p.part)}(?![\\p{L}\\p{N}])`, p.part.length >= 4 ? 'giu' : 'gu');
       for (const m of text.matchAll(re)) spans.push({ start: m.index, end: m.index + m[0].length, kind: 'PERSON', why: 'part of a held name', source: 'names' });
     }
     const merged = merge(spans);
@@ -168,7 +169,7 @@ export function sealAll(texts: string[], opts: SealOptions = {}, map = new Token
     let cur = 0;
     for (const s of merged) {
       const value = text.slice(s.start, s.end);
-      const full = s.kind === 'PERSON' ? parts.find((p) => normalise(p.part) === normalise(value))?.full : undefined;
+      const full = s.kind === 'PERSON' ? parts.find((p) => normalise(p.part) === normalise(value) && normalise(p.full) !== normalise(value))?.full : undefined;
       const token = full ? map.tokenFor('PERSON', full) : map.tokenFor(s.kind, value);
       if (full) map.alias('PERSON', value, token);
       out += text.slice(cur, s.start) + token;
