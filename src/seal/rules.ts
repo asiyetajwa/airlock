@@ -173,7 +173,7 @@ const LABEL_WORDS = /^(?:contact|system|assistant|user|bot|ai|admin|support|huma
 /** Words that sit where a name would in a greeting or sign-off but are not names. */
 const NOT_NAMES = new Set('there all everyone everybody team folks guys gals friends friend sir madam maam me you us them mom dad mum mama papa babe baby honey hun love dear again so much the a and to again neighbor neighbors hr support admin manager management office it security customer customers user users member members client clients sender reader again later soon now then thanks thank cheers regards best sincerely yours warmly xoxo xo ttyl team. hello hi hey ok okay yes no please again note reminder update'.split(' '));
 
-const labelled = (label: string, value: string) => new RegExp(`\\b(?:${label})\\b[^\\S\\n]*(?:#|no\\.?|number|is|was|:|=|-|\\s)*[^\\S\\n]*["'“‘]?${value}`, 'gi');
+const labelled = (label: string, value: string) => new RegExp(`\\b(?:${label})\\b[^\\S\\n]*(?:#|no\\.?|number|is|was|:|=|-|\\s|\\(id\\))*[^\\S\\n]*["'“‘]?${value}`, 'gi');
 
 /** Every rule, as a function from text to matches. Order matters only for overlaps: earlier wins on ties. */
 const RULES: Array<(t: string) => Found[]> = [
@@ -247,7 +247,7 @@ const RULES: Array<(t: string) => Found[]> = [
     const start = (m.index ?? 0) + m[0].length - v.length;
     return { start, end: start + v.length, kind: 'PASSPORT' as Kind, why: 'labelled passport number' };
   }),
-  (t) => [...t.matchAll(labelled("driver'?s?\\s+licen[cs]e|licen[cs]e|dl|real id|state id|id card", '(?<v>[A-Z0-9][A-Z0-9\\-]{4,16})'))].filter((m) => /\d/.test(m.groups?.v ?? '')).map((m) => {
+  (t) => [...t.matchAll(labelled("driver['’]?s?\\s+licen[cs]e|licen[cs]e|dl|real id|state id|id card", '(?<v>[A-Z0-9][A-Z0-9\\-]{4,16})'))].filter((m) => /\d/.test(m.groups?.v ?? '')).map((m) => {
     const v = m.groups?.v ?? '';
     const start = (m.index ?? 0) + m[0].length - v.length;
     return { start, end: start + v.length, kind: 'LICENSE' as Kind, why: "labelled driver's license" };
@@ -321,7 +321,7 @@ const RULES: Array<(t: string) => Found[]> = [
   // Common US first names and surnames (public name lists), with care for names that are also words.
   (t) => nameListSpans(t),
   // A long bare number (9 to 17 digits) is an account, ID or reference number more often than not.
-  (t) => [...t.matchAll(/(?<![\d.,\-\/])\d{9,17}(?![\d.,\-\/])/g)].map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'ID', why: 'long number' })),
+  (t) => [...t.matchAll(/(?<![\d.,\-\/])\d{9,17}(?![\d,\-\/]|\.\d)/g)].map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'ID', why: 'long number' })),
   // A machine string standing alone, with no label: long, mixed, high entropy.
   (t) => [...t.matchAll(/(?<![A-Za-z0-9_+/=\-])[A-Za-z0-9_+/=\-]{20,}(?![A-Za-z0-9_+/=\-])/g)].filter((m) => machineString(m[0])).map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'KEY', why: 'unlabelled secret, high entropy' })),
 ];

@@ -57,6 +57,7 @@ const phone = () => window.matchMedia('(max-width: 900px)').matches;
 const device = () => (phone() ? 'this phone' : 'this computer');
 const usd = (n: number) => (n === 0 ? '$0' : n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(3)}`);
 const today = () => new Date().toISOString().slice(0, 10);
+const n = (x: number) => x.toLocaleString('en-US');
 
 const store = {
   get<T>(key: string, fallback: T): T {
@@ -392,13 +393,13 @@ function renderStats(screen: Screen): void {
       return;
     }
     el.innerHTML = `
-      <div class="stat"><b>${String(l.leaked)}<em> / ${String(l.secrets)}</em></b><span>planted secrets leaked</span></div>
+      <div class="stat"><b>${n(l.leaked)}<em> / ${n(l.secrets)}</em></b><span>planted secrets leaked</span></div>
       <div class="stat"><b>${l.answersAsked ? String(Math.round((l.answersRight / l.answersAsked) * 100)) : '-'}%</b><span>answers still right after filling in</span></div>
-      <div class="stat"><b>${String(l.overRedactions)}</b><span>ordinary words held by mistake</span></div>
+      <div class="stat"><b>${n(l.overRedactions)}</b><span>extra holds: held, but not planted</span></div>
       <div class="stat"><b>${usd(l.costUsd)}</b><span>whole test on Token Factory</span></div>`;
     return;
   }
-  const leakLine = l ? `<b>${String(l.leaked)}<em> / ${String(l.secrets)}</em></b><span>leaks in the last leak test</span><div class="meter"><i style="width:${String(l.secrets ? 100 - (l.leaked / l.secrets) * 100 : 0)}%"></i></div>` : `<b>-</b><span>no leak test run yet</span>`;
+  const leakLine = l ? `<b>${n(l.leaked)}<em> / ${n(l.secrets)}</em></b><span>leaks in the last leak test</span><div class="meter"><i style="width:${String(l.secrets ? 100 - (l.leaked / l.secrets) * 100 : 0)}%"></i></div>` : `<b>-</b><span>no leak test run yet</span>`;
   el.innerHTML = `
     <div class="stat"><b>${String(state.stats.held)}</b><span>items held back today</span></div>
     <div class="stat">${leakLine}</div>
@@ -519,7 +520,7 @@ function leakCenter(): string {
     return `<div class="kicker"><span>Leak test</span></div><div class="empty"><h2>No leak test results yet.</h2>Run <b>npm run leak-test</b> to have Nemotron 3 Ultra write documents that try to smuggle secrets out, and score this build against them.</div>`;
   }
   const rows = l.categories.map((c) => `<div class="trow"><span class="k">${svg(CAT_ICON[c.id] ?? 'i-doc')}</span><div><b>${esc(c.label)}</b><span>${esc(c.hint)}</span></div>
-      <b class="${c.leaked ? 'bad' : 'good'}">${String(c.secrets - c.leaked)} / ${String(c.secrets)}</b><b>${c.asked ? `${String(Math.round((c.right / c.asked) * 100))}%` : 'n/a'}</b><b>${usd(c.costUsd)}</b></div>`);
+      <b class="${c.leaked ? '' : 'good'}">${n(c.secrets - c.leaked)} / ${n(c.secrets)}</b><b>${c.asked ? `${String(Math.round((c.right / c.asked) * 100))}%` : 'n/a'}</b><b>${usd(c.costUsd)}</b></div>`);
   const shown = state.replay ? l.stream.slice(Math.max(0, state.replay.shown - 6), state.replay.shown).reverse() : [];
   const stream = shown.map((s) => `<div class="srow"><b>${esc(s.title)}</b>${esc(s.category)}<em class="${s.leaked ? 'bad' : ''}">${s.leaked ? `${String(s.leaked)} leaked` : `${String(s.secrets)} held`}${s.right === null ? '' : s.right ? ', answer right' : ', answer wrong'}</em></div>`);
   const counter = state.replay ? `<span>${String(Math.min(state.replay.shown, l.stream.length))} of ${String(l.stream.length)} items</span>` : `<button data-act="replay">Replay the recorded run</button>`;

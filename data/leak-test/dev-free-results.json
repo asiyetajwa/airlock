@@ -1,6 +1,6 @@
 {
   "split": "dev",
-  "ranAt": "2026-10-24T08:46:56.926Z",
+  "ranAt": "2026-10-24T08:50:33.766Z",
   "attacker": "nvidia/Nemotron-3-Ultra-550b-a55b",
   "answerer": "nvidia/nemotron-3-super-120b-a12b",
   "documents": 16,
