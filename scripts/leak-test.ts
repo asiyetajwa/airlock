@@ -395,7 +395,7 @@ async function main(): Promise<void> {
     answerCostUsd: answerCost,
     categories,
     examples,
-    stream: rows.map((r) => ({ title: r.title, category: CATEGORIES.find((c) => c.id === r.category)?.label ?? r.category, secrets: r.secrets, leaked: r.leaks.length, right: r.right })),
+    stream: rows.map((r) => ({ title: r.title, category: CATEGORIES.find((c) => c.id === r.category)?.label ?? r.category, set: r.set, secrets: r.secrets, leaked: r.leaks.length, right: r.right })),
   };
   const tag = FREE ? `${split}-free` : split;
   await writeFile(join(DIR, `${tag}-rows.json`), JSON.stringify(rows, null, 2));

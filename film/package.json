@@ -1,0 +1,24 @@
+{
+  "name": "@airlock/film",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "The Airlock product film (Remotion), built from stills of the real app",
+  "scripts": {
+    "capture": "node scripts/capture.mjs",
+    "studio": "remotion studio src/index.ts",
+    "voiceover": "node scripts/voiceover.mjs airlock",
+    "render": "node scripts/render.mjs AirlockLandscape"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.536",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "remotion": "4.0.536"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.12",
+    "playwright": "1.56.1",
+    "typescript": "5.9.2"
+  }
+}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Airlock Thumbnail</title>
+<style>
+@font-face { font-family: 'Nunito Sans'; src: url('../public/fonts/nunito-sans-variable.woff2') format('woff2'); font-weight: 200 1000; }
+:root { --navy: #2a2950; --navy2: #1d1c3a; --blue: #6c7cf5; --blue2: #8f9dff; --muted: #6b6b8f; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { width: var(--w); height: var(--h); overflow: hidden; font-family: 'Nunito Sans', sans-serif; background: radial-gradient(80% 90% at 30% 30%, #eeeefa, #d7d8ee 70%); position: relative; }
+.copy { position: absolute; left: 6%; top: 50%; transform: translateY(-50%); width: 46%; }
+.brand { display: flex; align-items: center; gap: 18px; font-weight: 800; font-size: calc(var(--h) * 0.075); color: var(--navy); letter-spacing: -0.02em; }
+.brand svg { width: calc(var(--h) * 0.085); height: calc(var(--h) * 0.085); }
+h1 { margin: calc(var(--h) * 0.04) 0 0; font-size: calc(var(--h) * 0.105); line-height: 1.02; font-weight: 800; color: var(--navy2); letter-spacing: -0.03em; }
+h1 span { color: var(--blue); }
+p { margin: calc(var(--h) * 0.03) 0 0; font-size: calc(var(--h) * 0.042); color: var(--muted); font-weight: 600; line-height: 1.3; }
+.shot { position: absolute; right: -6%; top: 50%; width: 56%; transform: translateY(-50%) perspective(1600px) rotateY(-12deg) rotateX(3deg); border-radius: 18px; overflow: hidden; box-shadow: 0 50px 100px rgba(40,38,100,0.4), 0 0 0 1px rgba(255,255,255,0.6); }
+.shot img { display: block; width: 100%; }
+</style>
+</head>
+<body>
+<div class="copy">
+  <div class="brand"><svg viewBox="0 0 48 48"><rect width="48" height="48" rx="14" fill="#1d1c3a"/><rect x="15" y="22" width="18" height="13" rx="4" fill="#8f9dff"/><path d="M19 22v-3a5 5 0 0 1 10 0v3" stroke="#8f9dff" stroke-width="3" fill="none"/></svg>Airlock</div>
+  <h1>Seal your secrets <span>before</span> the cloud sees them.</h1>
+  <p>1,083 of 1,170 planted secrets held against a Nemotron red team.</p>
+</div>
+<div class="shot"><img src="../public/app/d-answer.png" alt=""></div>
+</body>
+</html>

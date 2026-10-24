@@ -46,7 +46,7 @@ interface LeakResults {
   costUsd: number;
   categories: LeakCategory[];
   examples: LeakExample[];
-  stream: Array<{ title: string; category: string; secrets: number; leaked: number; right: boolean | null }>;
+  stream: Array<{ title: string; category: string; set?: number; secrets: number; leaked: number; right: boolean | null }>;
 }
 
 interface Stats { date: string; held: number; calls: number; cost: number }
@@ -522,7 +522,7 @@ function leakCenter(): string {
   const rows = l.categories.map((c) => `<div class="trow"><span class="k">${svg(CAT_ICON[c.id] ?? 'i-doc')}</span><div><b>${esc(c.label)}</b><span>${esc(c.hint)}</span></div>
       <b class="${c.leaked ? '' : 'good'}">${n(c.secrets - c.leaked)} / ${n(c.secrets)}</b><b>${c.asked ? `${String(Math.round((c.right / c.asked) * 100))}%` : 'n/a'}</b><b>${usd(c.costUsd)}</b></div>`);
   const shown = state.replay ? l.stream.slice(Math.max(0, state.replay.shown - 6), state.replay.shown).reverse() : [];
-  const stream = shown.map((s) => `<div class="srow"><b>${esc(s.title)}</b>${esc(s.category)}<em class="${s.leaked ? 'bad' : ''}">${s.leaked ? `${String(s.leaked)} leaked` : `${String(s.secrets)} held`}${s.right === null ? '' : s.right ? ', answer right' : ', answer wrong'}</em></div>`);
+  const stream = shown.map((s) => `<div class="srow"><b>${esc(s.title)}</b>${esc(s.category)}${s.set === undefined ? '' : `, secret set ${String(s.set + 1)}`}<em class="${s.leaked ? 'bad' : ''}">${s.leaked ? `${String(s.leaked)} leaked` : `${String(s.secrets)} held`}${s.right === null ? '' : s.right ? ', answer right' : ', answer wrong'}</em></div>`);
   const counter = state.replay ? `<span>${String(Math.min(state.replay.shown, l.stream.length))} of ${String(l.stream.length)} items</span>` : `<button data-act="replay">Replay the recorded run</button>`;
   return `<div class="kicker"><span>Attacks by type</span><span>${String(l.documents)} documents written by Nemotron 3 Ultra</span></div>
     <div class="table"><div class="trow h"><span></span><span>What it hid</span><span>Held</span><span>Answers right</span><span>Cost</span></div>${rows.join('')}</div>

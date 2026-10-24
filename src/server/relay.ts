@@ -112,7 +112,8 @@ export function createRelay(tf: TokenFactory, opts: { keyPath?: string; tavilyKe
       const long = text.length > 12_000;
       const model = long ? MODELS.ultra : MODELS.super;
       const out = await tf.chat({ step: 'ask', role: long ? 'ultra' : 'super', model, messages: buildMessages(body, web), maxTokens: 400, temperature: 0 });
-      const answer = out.text.trim();
+      // House style: no em dashes in anything Airlock shows. Applied before signing, so the receipt covers the text the app shows.
+      const answer = out.text.trim().replace(/\s*[—–]\s*/g, ', ');
       const call = tf.telemetry.calls.at(-1);
       const base = { id: randomUUID(), at: new Date().toISOString(), model, requestSha256: sha256Hex(text), responseSha256: sha256Hex(answer), requestBytes: raw.length };
       const receipt: Receipt = {
