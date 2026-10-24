@@ -8,7 +8,9 @@
 //                   contain the planted value the question asks for
 //
 //   npm run leak-test -- dev     16 documents, for working on the sealer (never used for the score)
-//   npm run leak-test -- test    48 documents (12 per attack type) x 5 secret sets = 240 items, the published score
+//   npm run leak-test -- test    48 documents (12 per attack type) x 5 secret sets = 240 items, the first scored run
+//   npm run leak-test -- test2   48 new documents, half the people with rarer names, the second scored run
+//   add --free to re-score cached documents for leaks only, with no paid calls
 // Ultra's documents are cached in data/leak-test/, so a re-run costs only the answers. Invented keys avoid vendor
 // formats that have no checksum (Slack's, for one), so secret scanners do not mistake them for real ones.
 
@@ -20,12 +22,14 @@ import { loadNer } from '../src/seal/ner-node.js';
 import { buildMessages, MODELS } from '../src/server/relay.js';
 
 process.env.APPRENTICE_LEDGER ??= join(process.cwd(), '.airlock-ledger.jsonl');
-const split = (process.argv[2] ?? 'dev') as 'dev' | 'test';
+const split = (process.argv[2] ?? 'dev') as 'dev' | 'test' | 'test2';
+/** --free: seal and score leaks only, from cached documents, with no paid calls. */
+const FREE = process.argv.includes('--free');
 const DIR = join('data', 'leak-test');
-const PER_DOC = split === 'test' ? 5 : 3;
+const PER_DOC = split === 'dev' ? 3 : 5;
 
 const tf = createTokenFactory({ respond: () => '[]' });
-if (!tf.live) throw new Error('The leak test needs NEBIUS_API_KEY (and APPRENTICE_BUDGET_USD) in .env.');
+if (!tf.live && !FREE) throw new Error('The leak test needs NEBIUS_API_KEY (and APPRENTICE_BUDGET_USD) in .env.');
 
 // ---------- Ultra writes the documents ----------
 
@@ -116,6 +120,9 @@ function rng(seed: number): () => number {
 
 const FIRST = ['Megan', 'Tyler', 'Brianna', 'Marcus', 'Kayla', 'Diego', 'Hannah', 'Jamal', 'Olivia', 'Connor', 'Aisha', 'Ethan', 'Rosa', 'Caleb', 'Mei', 'Logan', 'Destiny', 'Hunter', 'Priya', 'Wyatt'];
 const LAST = ['Carter', 'Nguyen', 'Brooks', 'Delgado', 'Fitzgerald', 'Okafor', 'Sullivan', 'Hernandez', 'Whitaker', 'Kowalski', 'Patel', 'Bennett', 'Tran', 'McAllister', 'Washington', 'Lindqvist', 'Romero', 'Hayes', 'Castillo', 'Abernathy'];
+// Rarer names, on no public name list the sealer uses: half the people in the second scored set get these.
+const RARE_FIRST = ['Oluwaseun', 'Saoirse', 'Thandiwe', 'Yusra', 'Anouk', 'Bertil', 'Caoimhe', 'Dashiell', 'Fenella', 'Gwilym', 'Kasimir', 'Lorcan', 'Mireille', 'Niamh', 'Odalys', 'Rafferty', 'Sigrid', 'Tamsin', 'Ulric', 'Xiomara'];
+const RARE_LAST = ['Quackenbush', 'Oyelaran', 'Vandersloot', 'Kaczmarczyk', 'Brzezinski', 'Thistlewood', 'Achterberg', 'Iwuchukwu', 'Lindqvist', 'Szczepanski', 'Ravensworth', 'Okonkwo', 'Fairbrother', 'Hoogendoorn', 'Abernethy', 'Wojciechowski', 'Delacroix', 'Amundsen', 'Haverkamp', 'Ibarguen'];
 const STREETS = ['Maple Avenue', 'Oak Street', 'Birchwood Drive', 'Cedar Lane', 'Willow Court', 'Lakeview Road', 'Juniper Way', 'Elm Street'];
 const WORDS = ['Maple', 'Harbor', 'Falcon', 'River', 'Copper', 'Willow', 'Summit', 'Cobalt', 'Juniper', 'Lantern', 'Granite', 'Meadow'];
 
@@ -209,7 +216,7 @@ function disguise(value: string, style: Style): string {
   }
 }
 
-interface Planted { kind: SlotKind; value: string; surface: string; start: number; end: number }
+interface Planted { kind: SlotKind; value: string; surface: string; start: number; end: number; ordinaryDate?: boolean }
 
 function instantiate(doc: Doc, set: number): { text: string; planted: Planted[]; expected: string | null } {
   const r = rng(hash(`${doc.id}:${String(set)}`));
@@ -225,14 +232,18 @@ function instantiate(doc: Doc, set: number): { text: string; planted: Planted[];
     cur = m.index + m[0].length;
     if (!kind) continue;
     const letter = m[2] ?? 'A';
-    const person = people.get(letter) ?? { first: pick(r, FIRST), last: pick(r, LAST) };
+    const rare = split === 'test2' && r() < 0.5;
+    const person = people.get(letter) ?? { first: pick(r, rare ? RARE_FIRST : FIRST), last: pick(r, rare ? RARE_LAST : LAST) };
     people.set(letter, person);
     const key = `${kind}_${letter}`;
     const value = values.get(key) ?? secretFor(kind, r, person);
     values.set(key, value);
     const style = (STYLES as string[]).includes(m[3] ?? '') ? (m[3] as Style) : 'plain';
     const surface = disguise(value, style);
-    planted.push({ kind, value, surface, start: text.length, end: text.length + surface.length });
+    // A date slot counts as a birth date only when the document says so; Airlock leaves ordinary dates alone by design.
+    const around = doc.text.slice(Math.max(0, m.index - 50), m.index + m[0].length + 30);
+    const ordinaryDate = kind === 'DOB' && !/birth|born|\bdob\b|d\.o\.b|bday|b-day/i.test(around);
+    planted.push({ kind, value, surface, start: text.length, end: text.length + surface.length, ordinaryDate });
     text += surface;
   }
   text += doc.text.slice(cur);
@@ -288,13 +299,14 @@ async function main(): Promise<void> {
     docs = JSON.parse(await readFile(docsPath, 'utf8')) as Doc[];
     console.log(`red team: ${String(docs.length)} cached documents`);
   } catch {
-    docs = await writeDocs(split === 'test' ? 48 : 16, split === 'test' ? 1000 : 1);
+    if (FREE) throw new Error(`--free needs cached documents in ${docsPath}`);
+    docs = await writeDocs(split === 'dev' ? 16 : 48, split === 'dev' ? 1 : split === 'test' ? 1000 : 2000);
     await writeFile(docsPath, JSON.stringify(docs, null, 2));
   }
   const redTeamCost = tf.telemetry.summary('red-team').costUsd;
   const ner = await loadNer();
 
-  interface Row { doc: string; category: string; title: string; set: number; secrets: number; leaks: string[]; extra: string[]; blocked: boolean; right: boolean | null; answer: string | null; costUsd: number }
+  interface Row { doc: string; category: string; title: string; set: number; secrets: number; dates: number; leaks: string[]; extra: string[]; blocked: boolean; right: boolean | null; answer: string | null; costUsd: number }
   const rows: Row[] = [];
   const examples: Array<{ category: string; title: string; original: string; held: Array<{ start: number; end: number; token: string; kind: Kind }>; injection: boolean }> = [];
   const queue: Array<() => Promise<void>> = [];
@@ -308,13 +320,15 @@ async function main(): Promise<void> {
         const { sealed, map } = sealAll([question, text, doc.title], { names: [qNames, dNames, []] });
         const body = JSON.stringify({ question: sealed[0]?.sealed ?? '', context: [{ name: sealed[2]?.sealed ?? '', text: sealed[1]?.sealed ?? '' }] });
         const blocked = egressCheck(body, map.values()).length > 0;
-        const leaks = blocked ? [] : planted.filter((p) => leaked(p, body)).map((p) => `${p.kind}: ${p.surface.replace(/\n/g, '\\n')}`);
+        const dates = planted.filter((p) => p.ordinaryDate).length;
+        const scored = planted.filter((p) => !p.ordinaryDate);
+        const leaks = blocked ? [] : scored.filter((p) => leaked(p, body)).map((p) => `${p.kind}: ${p.surface.replace(/\n/g, '\\n')}`);
         const held = sealed[1]?.held ?? [];
         const extra = held.filter((h) => !planted.some((p) => h.start < p.end && p.start < h.end)).map((h) => `${h.kind}: ${h.value}`);
         let right: boolean | null = null;
         let answer: string | null = null;
         let costUsd = 0;
-        if (expected && !blocked) {
+        if (expected && !blocked && !FREE) {
           const before = tf.telemetry.calls.length;
           const out = await tf.chat({
             step: 'answer',
@@ -329,7 +343,7 @@ async function main(): Promise<void> {
           const slot = /\{\{([A-Z_]+?)_[A-Z](?=\}\}|\|)/.exec(doc.answer ?? '')?.[1] as SlotKind | undefined;
           right = answerRight(answer, expected, slot);
         }
-        rows.push({ doc: doc.id, category: doc.category, title: doc.title, set, secrets: planted.length, leaks, extra, blocked, right, answer, costUsd });
+        rows.push({ doc: doc.id, category: doc.category, title: doc.title, set, secrets: scored.length, dates, leaks, extra, blocked, right, answer, costUsd });
         if (set === 0) examples.push({ category: doc.category, title: doc.title, original: text, held: held.map((h) => ({ start: h.start, end: h.end, token: h.token, kind: h.kind })), injection: doc.category === 'injections' });
       });
     }
@@ -371,6 +385,7 @@ async function main(): Promise<void> {
     secrets: rows.reduce((a, r) => a + r.secrets, 0),
     leaked: rows.reduce((a, r) => a + r.leaks.length, 0),
     blocked: rows.filter((r) => r.blocked).length,
+    ordinaryDates: rows.reduce((a, r) => a + r.dates, 0),
     answersRight: rows.filter((r) => r.right === true).length,
     answersAsked: rows.filter((r) => r.right !== null).length,
     overRedactions: rows.reduce((a, r) => a + r.extra.length, 0),
@@ -382,9 +397,12 @@ async function main(): Promise<void> {
     examples,
     stream: rows.map((r) => ({ title: r.title, category: CATEGORIES.find((c) => c.id === r.category)?.label ?? r.category, secrets: r.secrets, leaked: r.leaks.length, right: r.right })),
   };
-  await writeFile(join(DIR, `${split}-rows.json`), JSON.stringify(rows, null, 2));
-  await writeFile(join(DIR, split === 'test' ? 'results.json' : 'dev-results.json'), JSON.stringify(results, null, 2));
-  console.log(`\n${split}: ${String(results.items)} items, ${String(results.secrets)} planted secrets, ${String(results.leaked)} leaked, ${String(results.blocked)} blocked by the egress check`);
+  const tag = FREE ? `${split}-free` : split;
+  await writeFile(join(DIR, `${tag}-rows.json`), JSON.stringify(rows, null, 2));
+  await writeFile(join(DIR, `${tag}-results.json`), JSON.stringify(results, null, 2));
+  // The app shows the newest scored run.
+  if (split === 'test2' && !FREE) await writeFile(join(DIR, 'results.json'), JSON.stringify(results, null, 2));
+  console.log(`\n${split}: ${String(results.items)} items, ${String(results.secrets)} planted secrets (plus ${String(results.ordinaryDates)} ordinary dates, not held by design), ${String(results.leaked)} leaked, ${String(results.blocked)} blocked by the egress check`);
   console.log(`answers right ${String(results.answersRight)}/${String(results.answersAsked)}, extra holds ${String(results.overRedactions)}, cost $${results.costUsd.toFixed(4)} (red team $${redTeamCost.toFixed(4)}, answers $${answerCost.toFixed(4)})`);
   for (const r of rows.filter((x) => x.leaks.length)) console.log(`  leak ${r.doc}#${String(r.set)}: ${r.leaks.join(' | ')}`);
 }

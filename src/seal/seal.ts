@@ -42,12 +42,13 @@ const RANK: Record<Kind, number> = {
   DATE_OF_BIRTH: 5, EMAIL: 4, PHONE: 4, HELD: 4, ADDRESS: 3, PERSON: 3, AMOUNT: 2,
 };
 
-const DIGIT_KINDS = new Set<Kind>(['CARD', 'SSN', 'ROUTING', 'ACCOUNT', 'PHONE', 'AMOUNT']);
+const DIGIT_KINDS = new Set<Kind>(['CARD', 'SSN', 'ROUTING', 'ACCOUNT', 'PHONE', 'AMOUNT', 'DATE_OF_BIRTH', 'ID', 'PASSPORT']);
+const SPELLED: Record<string, string> = { zero: '0', oh: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9' };
 
-/** The form two values are compared in: digits only for numbers, letters and digits in lower case otherwise. */
+/** The form two values are compared in: digits only for numbers (spelled digits too), letters and digits in lower case otherwise. */
 export function normalise(value: string, kind?: Kind): string {
   if (kind && DIGIT_KINDS.has(kind)) {
-    const d = value.replace(/\D/g, '');
+    const d = value.replace(/\b(zero|oh|one|two|three|four|five|six|seven|eight|nine)\b/gi, (w) => SPELLED[w.toLowerCase()] ?? w).replace(/\D/g, '');
     if (d) return d;
   }
   return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
@@ -154,9 +155,19 @@ export function sealAll(texts: string[], opts: SealOptions = {}, map = new Token
 
   const sealed: Sealed[] = texts.map((text, i) => {
     const spans: Span[] = [...(found[i] ?? [])];
+    const digitValues = new Map<string, Kind>();
     for (const k of known.values()) {
       if (k.kind === 'AMOUNT') continue;
       for (const [s, e] of occurrences(text, k.value)) spans.push({ start: s, end: e, kind: k.kind, why: 'held elsewhere in your vault', source: 'list' });
+      const d = normalise(k.value, k.kind);
+      if (DIGIT_KINDS.has(k.kind) && /^\d{6,}$/.test(d)) digitValues.set(d, k.kind);
+    }
+    // The same number written another way ("07/28/1997" and "zero seven / two eight / ...") is held too.
+    if (digitValues.size) {
+      for (const m of text.matchAll(/\d[\d\s.\-\/()]*\d/g)) {
+        const kind = digitValues.get(m[0].replace(/\D/g, ''));
+        if (kind) spans.push({ start: m.index, end: m.index + m[0].length, kind, why: 'held elsewhere in your vault', source: 'list' });
+      }
     }
     for (const p of parts) {
       // Longer name parts are matched in any case ("megan"); short ones only as written, to spare ordinary words.

@@ -3,6 +3,8 @@
 // (digits spelled out, characters spaced apart, a key split across lines), then maps matches
 // back to the original text. Pure TypeScript: the same code runs in the browser, on a phone and in Node.
 
+import { AMBIGUOUS, FIRST_NAMES, LAST_NAMES } from './names-data.js';
+
 export type Kind =
   | 'KEY' | 'PRIVATE_KEY' | 'PASSWORD' | 'CARD' | 'SSN' | 'ROUTING' | 'ACCOUNT' | 'IBAN'
   | 'PHONE' | 'EMAIL' | 'PASSPORT' | 'LICENSE' | 'AMOUNT' | 'ADDRESS' | 'DATE_OF_BIRTH' | 'ID' | 'PERSON' | 'HELD';
@@ -32,9 +34,10 @@ const NUMBER_WORDS: Record<string, string> = {
   zero: '0', oh: '0', o: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9',
 };
 
-/** "four one one seven" -> "4117": runs of four or more spelled digits become digits. */
+/** "four one one seven" -> "4117", "one zero / zero six" -> "10/06": runs of four or more spelled digits become digits. */
 function spelledDigits(text: string): View | null {
-  const re = /\b(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)(?:[\s,\-]+(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)){3,}\b/gi;
+  const W = '(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)';
+  const re = new RegExp(`(?:\\(\\s*)?\\b${W}(?:[\\s,\\-/.()]+${W}){3,}\\b`, 'gi');
   if (!re.test(text)) return null;
   re.lastIndex = 0;
   let out = '';
@@ -43,8 +46,8 @@ function spelledDigits(text: string): View | null {
   let last = 0;
   for (const m of text.matchAll(re)) {
     for (let i = last; i < m.index; i++) { out += text[i]; map.push(i); mapEnd.push(i + 1); }
-    for (const w of m[0].matchAll(/[a-z]+/gi)) {
-      out += NUMBER_WORDS[w[0].toLowerCase()] ?? '';
+    for (const w of m[0].matchAll(/[a-z]+|[\/\-.()]/gi)) {
+      out += NUMBER_WORDS[w[0].toLowerCase()] ?? w[0];
       map.push(m.index + w.index);
       mapEnd.push(m.index + w.index + w[0].length);
     }
@@ -158,7 +161,7 @@ function entropy(s: string): number {
 /** A string a person would not type as a word: long, mixed character classes, high entropy. */
 export function machineString(s: string): boolean {
   if (s.length < 16) return false;
-  if (/^https?:/i.test(s) || /^[a-z]+(?:[-_][a-z]+)+$/i.test(s)) return false;
+  if (/^https?:/i.test(s) || /^[a-z]+(?:[-_][a-z]+)+$/i.test(s) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(s)) return false;
   const classes = [/[a-z]/, /[A-Z]/, /\d/, /[_+/=\-]/].filter((r) => r.test(s)).length;
   return classes >= 3 && entropy(s) >= 3.5;
 }
@@ -175,11 +178,11 @@ const labelled = (label: string, value: string) => new RegExp(`\\b(?:${label})\\
 /** Every rule, as a function from text to matches. Order matters only for overlaps: earlier wins on ties. */
 const RULES: Array<(t: string) => Found[]> = [
   (t) => [...t.matchAll(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g)].map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'PRIVATE_KEY', why: 'private key block' })),
-  (t) => [...t.matchAll(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g)].map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'KEY', why: 'cloud access key, AKIA prefix' })),
+  (t) => [...t.matchAll(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/gi)].map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'KEY', why: 'cloud access key, AKIA prefix' })),
   (t) => [...t.matchAll(/(?<![A-Za-z0-9])(?:sk-(?:proj-|ant-)?|sk_live_|sk_test_|rk_live_|pk_live_|ghp_|gho_|ghs_|github_pat_|glpat-|xox[abpr]-|AIza|tvly-|hf_)[A-Za-z0-9_\-]{12,}/g)].map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'KEY', why: 'API key, known prefix' })),
   (t) => [...t.matchAll(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g)].map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'KEY', why: 'signed token (JWT)' })),
   // A labelled password, passcode, PIN or Wi-Fi key: the value runs to the next whitespace.
-  (t) => [...t.matchAll(labelled('pass(?:word|code|phrase)?|pwd|pin|wi-?fi(?: password| key)?|network key|login', '(?<v>[^\\s"\'`]{4,64})'))].flatMap((m) => {
+  (t) => [...t.matchAll(labelled('pass(?:word|code|phrase)?|pwd|pin|wi-?fi(?: password| key)?|network key', '(?<v>[^\\s"\'`]{4,64})'))].flatMap((m) => {
     const v = (m.groups?.v ?? '').replace(/[.,;:!?)\]"'”’]+$/, '');
     if (!v || /^(?:is|was|the|your|for|to|and|reset|below|above|here|change|changed|number|password|passcode|key|pin|code|manager|protected|required|expired|expires|policy|hint)$/i.test(v)) return [];
     if (/^\d+$/.test(v) && v.length > 8) return [];
@@ -219,7 +222,7 @@ const RULES: Array<(t: string) => Found[]> = [
     return { start, end: start + v.length, kind: 'PASSWORD' as Kind, why: 'password inside a URL' };
   }),
   // Password-shaped: letters, digits and a symbol together, no spaces, 8 to 64 characters.
-  (t) => [...t.matchAll(/(?<![^\s"'`(\[])(?=[^\s]*[A-Za-z])(?=[^\s]*\d)(?=[^\s]*[!#$%^&*?~+=@])[^\s"'`)\]]{8,64}(?![^\s"'`)\].,;:])/g)].filter((m) => !/@[a-z0-9-]+\.[a-z]/i.test(m[0]) && !/:\/\//.test(m[0]) && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(m[0]) && !/^\$?\d[\d,.]*$/.test(m[0])).map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'PASSWORD' as Kind, why: 'password-shaped string' })),
+  (t) => [...t.matchAll(/(?<![^\s"'`(\[:=])(?=[^\s]*[A-Za-z])(?=[^\s]*\d)(?=[^\s]*[!#$%^&*?~+=@])[^\s"'`)\]]{8,64}(?![^\s"'`)\].,;:])/g)].filter((m) => !/@[a-z0-9-]+\.[a-z]/i.test(m[0]) && !/:\/\//.test(m[0]) && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(m[0]) && !/^\$?\d[\d,.]*$/.test(m[0])).map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'PASSWORD' as Kind, why: 'password-shaped string' })),
   (t) => [...t.matchAll(/\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b/gi)].filter((m) => ibanValid(m[0])).map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'IBAN', why: 'IBAN, mod-97 check' })),
   (t) => [...t.matchAll(/(?<![\d-])\d(?:[ \-.]?\d){12,18}(?![\d-])/g)].filter((m) => luhn(m[0].replace(/\D/g, ''))).map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'CARD', why: 'card number, Luhn check' })),
   (t) => [...t.matchAll(/(?<![\d-])\d{3}([ \-.])\d{2}\1\d{4}(?![\d-])/g)].filter((m) => ssnPlausible(m[0].replace(/\D/g, ''))).map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'SSN', why: 'Social Security number shape' })),
@@ -297,7 +300,11 @@ const RULES: Array<(t: string) => Found[]> = [
   }),
   // Speakers in a chat log: "brianna: rent due friday" on two or more lines.
   (t) => {
-    const lines = [...t.matchAll(/^[^\S\n]*(?<v>[A-Za-z][A-Za-z'’\-]{1,20})[^\S\n]*:[^\S\n]+\S/gm)].filter((m) => !NOT_NAMES.has((m.groups?.v ?? '').toLowerCase()) && !LABEL_WORDS.test(m.groups?.v ?? ''));
+    const all = [...t.matchAll(/^[^\S\n]*(?<v>[A-Za-z][A-Za-z'’\-]{1,20})[^\S\n]*:[^\S\n]+\S+[^\S\n]+\S/gm)].filter((m) => !NOT_NAMES.has((m.groups?.v ?? '').toLowerCase()) && !LABEL_WORDS.test(m.groups?.v ?? ''));
+    // In a chat the same people speak again; in a form every label is different.
+    const counts = new Map<string, number>();
+    for (const m of all) counts.set((m.groups?.v ?? '').toLowerCase(), (counts.get((m.groups?.v ?? '').toLowerCase()) ?? 0) + 1);
+    const lines = all.filter((m) => (counts.get((m.groups?.v ?? '').toLowerCase()) ?? 0) >= 2 && !/^[a-z]+[A-Z]/.test(m.groups?.v ?? ''));
     if (lines.length < 2) return [];
     return lines.map((m) => {
       const v = m.groups?.v ?? '';
@@ -311,6 +318,8 @@ const RULES: Array<(t: string) => Found[]> = [
     const start = (m.index ?? 0) + m[0].lastIndexOf(v);
     return { start, end: start + v.length, kind: 'PERSON' as Kind, why: 'name in a greeting or sign-off' };
   }),
+  // Common US first names and surnames (public name lists), with care for names that are also words.
+  (t) => nameListSpans(t),
   // A long bare number (9 to 17 digits) is an account, ID or reference number more often than not.
   (t) => [...t.matchAll(/(?<![\d.,\-\/])\d{9,17}(?![\d.,\-\/])/g)].map((m) => ({ start: m.index, end: m.index + m[0].length, kind: 'ID', why: 'long number' })),
   // A machine string standing alone, with no label: long, mixed, high entropy.
@@ -334,6 +343,58 @@ export function ruleSpans(text: string): Span[] {
         out.push({ start, end, kind: f.kind, why: how ? `${f.why}, ${how}` : f.why, source: 'rule' });
       }
     }
+  }
+  return out;
+}
+
+const FIRST = new Set(FIRST_NAMES.split(' '));
+const LAST = new Set(LAST_NAMES.split(' '));
+const AMBIG = new Set(AMBIGUOUS.split(' '));
+/** Months, days and places that are also first names; held only as part of a full name. */
+const NOT_ALONE = new Set('january february march april may june july august september october november december monday tuesday wednesday thursday friday saturday sunday virginia georgia carolina dakota austin dallas houston denver phoenix orlando savannah charlotte jackson lincoln cleveland memphis aurora sydney paris london china india jordan chase sterling america england ireland florence'.split(' '));
+const TITLE = /^(?:mr|mrs|ms|mx|dr|prof|officer|judge|coach|sgt|det|rev|aunt|uncle|grandma|grandpa)\.?$/i;
+
+function nameListSpans(t: string): Found[] {
+  const words = [...t.matchAll(/[A-Za-z][A-Za-z'’]*(?:-[A-Za-z]+)?/g)];
+  const out: Found[] = [];
+  const sentenceStart = (i: number) => /(?:^|[.!?\n:]\s*|^\s*)$/.test(t.slice(Math.max(0, i - 3), i)) || i === 0;
+  for (let k = 0; k < words.length; k++) {
+    const m = words[k];
+    if (!m) continue;
+    const w = m[0].replace(/['’]s$/, '');
+    const lower = w.toLowerCase();
+    // Capitalised, or a name in capitals on a line that is not all capitals ("walk FITZGERALD's pup").
+    const lineOf = t.slice(t.lastIndexOf('\n', m.index) + 1, (t.indexOf('\n', m.index) + 1 || t.length + 1) - 1);
+    const cap = /^[A-Z][a-z]/.test(w) || (/^[A-Z]{3,}$/.test(w) && /[a-z]/.test(lineOf) && !AMBIG.has(lower));
+    const next = words[k + 1];
+    const gap = next ? t.slice(m.index + m[0].length, next.index) : '';
+    const nextLower = next?.[0].replace(/['’]s$/, '').toLowerCase() ?? '';
+    // "Jordan M. Ellis": a middle initial between first and last name.
+    const initial = !!next && /^[^\S\n]$/.test(gap) && /^[A-Z]$/.test(next[0]) && t[next.index + 1] === '.';
+    const after = initial ? words[k + 2] : undefined;
+    if (initial && after && FIRST.has(lower) && cap && LAST.has(after[0].toLowerCase()) && /^[A-Z]/.test(after[0])) {
+      out.push({ start: m.index, end: after.index + after[0].replace(/['’]s$/, '').length, kind: 'PERSON', why: 'on a list of common US names' });
+      k += 2;
+      continue;
+    }
+    const pairsWithLast = !!next && /^[^\S\n]{1,2}$/.test(gap) && LAST.has(nextLower) && (/^[A-Z]/.test(next[0]) || !AMBIG.has(nextLower));
+    let take = false;
+    if (FIRST.has(lower)) {
+      if (pairsWithLast && (cap || !AMBIG.has(lower))) take = true;
+      else if (NOT_ALONE.has(lower)) take = false;
+      else if (!AMBIG.has(lower)) take = cap || /^[a-z]+$/.test(w);
+      else take = cap && !sentenceStart(m.index);
+    } else if (LAST.has(lower) && cap && !AMBIG.has(lower)) {
+      const prev = words[k - 1];
+      const titled = !!prev && TITLE.test(prev[0]) && /^[^\S\n]{1,2}\.?[^\S\n]?$/.test(t.slice(prev.index + prev[0].length, m.index).replace(/^\./, ''));
+      // A surname alone, mid-sentence, that is not an ordinary word or a street name: "walk Fitzgerald's pup".
+      const street = !!next && /^(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Lane|Ln|Dr|Drive|Way|Ct|Court|Park|County|City|Bank|University|College|Hospital|Inc|LLC|Co)\b/.test(next[0]);
+      take = titled || (!sentenceStart(m.index) && !NOT_ALONE.has(lower) && !street);
+    }
+    if (!take) continue;
+    const end = pairsWithLast && next ? next.index + next[0].replace(/['’]s$/, '').length : m.index + w.length;
+    out.push({ start: m.index, end, kind: 'PERSON', why: 'on a list of common US names' });
+    if (pairsWithLast) k++;
   }
   return out;
 }
