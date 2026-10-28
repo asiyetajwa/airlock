@@ -7,7 +7,7 @@ Copy each section into the Devpost form.
 
 ## Links
 
-- **Demo video (YouTube, about 1:35):** https://youtu.be/cZM7GBF7MQY (rendered from the repo, `film/out/AirlockLandscape.mp4`).
+- **Demo video (YouTube, about 1:35):** https://youtu.be/cZM7GBF7MQY
 - **Repository (public, MIT license):** https://github.com/asiyetajwa/airlock
 - **Thumbnails:** `docs/thumbnail.jpg` (3:2) and `docs/thumbnail-youtube.jpg` (16:9).
 - **Results, every run including the misses:** `docs/RESULTS.md`.
